@@ -1,0 +1,184 @@
+#include<ESP8266WiFi.h>
+#include<ESP8266WebServer.h>
+#include<ArduinoJson.h>
+#define ssid "FTTH-BSNL-Prakash"
+#define pass  "1352972690"
+
+String APIKEY = "edb6f0d3832d47e40468827592125b19";
+String CityID ="1273313";
+WiFiServer server(80);
+ESP8266WebServer server1(80); 
+WiFiClient client;
+
+char servername[]="api.openweathermap.org";
+String result;
+int count=0;
+String weatherDescp ="", weatherLoc = "", Country;
+float temp,Humidity,Pressure,lon,lat;
+
+void setup(){
+  Serial.begin(115200);
+  Serial.println("\nConnecting to Network");
+  WiFi.begin(ssid,pass);
+  while(WiFi.status()!=WL_CONNECTED){
+    delay(400);
+    Serial.println(".");
+  }
+  Serial.print("Connected to the network:");
+  Serial.println(WiFi.localIP());
+  server1.on("/",sfound);
+  server1.onNotFound(snotFound);
+  server1.begin();
+  Serial.println("HTTP server started");
+}
+
+void loop(){
+  server1.handleClient();
+  if(count == 0){
+    count =1;
+    dispGetdata();
+    delay(1000);
+    getOWM();
+    
+  }
+  if(count == 1){
+    displayWeather();
+    delay(5000);
+    displayConditions();
+    delay(5000);
+    count++;
+  }
+}
+
+void sfound(){
+  server1.send(200,"text/html",Send_html( lon,lat,weatherDescp,weatherLoc,Country,temp,Humidity,Pressure));   
+}
+
+void snotFound(){
+  server1.send(404,"text/plain","Not Found");
+}
+
+String Send_html(float lon,float lat,String weatherDescp,String weatherLoc,String Country,float temp,float Humidity,float Pressure)
+{
+  String ptr = "<!DOCTYPE html> <html>\n";
+  ptr +="<head><title>ESP8266 Weather Station</title>\n";
+  ptr +="<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}\n";
+  ptr +="body{margin-top: 50px;} h1 { color: white;margin: 50px auto 30px;text-shadow: 2px 2px 5px red;}\n";
+  ptr +="p {font-size: 26px;color: white;margin-bottom: 10px;text-shadow: 2px 2px #808080;}\n";
+  ptr +=" #webpage {\n";
+  ptr +="background-color: rosybrown;\n";
+  ptr +="width: auto;\n";
+  ptr +="position: absolute;\n";
+  ptr +="top: 35%;\n";
+  ptr +="left: 50%;\n";
+  ptr +="transform: translate(-50%, -50%);\n";
+  ptr += "}";
+  ptr +="body {background-image: url('https://content3.jdmagicbox.com/comp/dehradun/m6/9999px135.x135.090707201745.q6m6/catalogue/graphic-era-university-dehradun-city-dehradun-institutes-2qdwcl8.jpg');</style>\n";
+  ptr +="</head>\n";
+  ptr +="<body> \n";
+  ptr +="<div id=  webpage>\n";
+  ptr +="<h1>ESP8266 Weather Station</h1>\n";
+  ptr +="<p>Location:";
+  ptr +=weatherLoc;
+  ptr +=",";
+  ptr +=Country;
+  ptr +="</p>";
+  ptr +="<p>Weather Description:";
+  ptr +=weatherDescp;
+  ptr +="</p>";
+  ptr +="<p>Longitude:";
+  ptr +=lon;
+  ptr +="</p>";
+   ptr +="<p>Latitude:";
+  ptr +=lat;
+  ptr +="</p>";
+  ptr +="<p>Temperature: ";
+  ptr +=temp;
+  ptr +="&deg;C</p>";
+  ptr +="<p>Humidity: ";
+  ptr +=Humidity;
+  ptr +="%</p>";
+  ptr +="<p>Pressure: ";
+  ptr +=Pressure;
+  ptr +="hPa</p>";
+  ptr +="</div>\n";
+  ptr +="</body>\n";
+  ptr +="</html>\n";
+  return ptr;  
+}
+
+void getOWM(){
+  if(client.connect(servername,80)){
+    client.println("GET /data/2.5/weather?id="+CityID+"&units=metric&APPID="+APIKEY);
+    client.println("\nHost:api.openweathermap.org");
+    client.println("\nUser-Agent:NodeMCU 1.0");
+    client.println("\nConnection:close");
+    }
+  else{
+    Serial.println("connection failed\n");
+    }
+  while(client.connected()&& !client.available())
+  delay(1);
+  while(client.connected() || client.available())
+  {
+    char c=client.read();     //gets byte from ethernet buffer
+    result=result+c;
+  }
+  client.stop();
+  result.replace('[',' ');
+  result.replace(']',' ');
+  Serial.println(result);
+  char jsonArray[result.length()+1];
+  result.toCharArray(jsonArray,sizeof(jsonArray));
+  jsonArray[result.length()+1]='\0';
+  StaticJsonBuffer<1024> json_buf;
+  JsonObject &root= json_buf.parseObject(jsonArray);
+  if(!root.success()){
+    Serial.println("parseObject() failed");
+    
+  }
+  String location = root["name"];
+  String country = root["sys"]["country"];
+  float temperature = root["main"]["temp"];
+  float humidity = root["main"]["humidity"];
+  String description = root["weather"]["description"];
+  float pressure = root["main"]["pressure"];
+  float cord_lon= root["coord"]["lon"];
+  float cord_lat= root["coord"]["lat"];
+  lon=cord_lon;
+  lat=cord_lat;
+  weatherDescp= description;
+  weatherLoc= location;
+  Country = country;
+  temp=temperature;
+  Humidity=humidity;
+  Pressure= pressure;
+}
+
+void dispGetdata(){
+       Serial.println("Getting data");
+ }
+
+void displayWeather(){
+  Serial.println("weather condition are as follows");
+  Serial.println(weatherLoc);
+  Serial.println(Country);
+  Serial.println(weatherDescp);
+}
+
+void displayConditions(){
+  Serial.print("Longitude:");
+  Serial.println(lon);
+  Serial.print("Lattitude:");
+  Serial.println(lat);
+  Serial.print("Temperature:");
+  Serial.print(temp);
+  Serial.print("degree");
+  Serial.println("C");
+  Serial.print("Humidity:");
+  Serial.print(Humidity);
+  Serial.println("%");
+  Serial.print("Pressure:");
+  Serial.print(Pressure);
+  Serial.println("hPa");// hectopascals(1hpa=100pascals)
+}
